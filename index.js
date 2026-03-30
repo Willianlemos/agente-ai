@@ -15,11 +15,11 @@ const app = new App({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function generateWithFallback(prompt) {
-  const configsToTry = [
-    { model: "gemini-3-flash-preview", api: "v1beta" },
-    { model: "gemini-3-pro-preview", api: "v1beta" },
-    { model: "gemini-1.5-pro", api: "v1beta" },
+const configsToTry = [
+    { model: "gemini-3-flash-preview", api: "v1beta" }, // Flash primeiro (mais cota)
     { model: "gemini-1.5-flash", api: "v1beta" },
+    { model: "gemini-3-pro-preview", api: "v1beta" },   // Pro depois
+    { model: "gemini-1.5-pro", api: "v1beta" },
     { model: "gemini-pro", api: "v1" }
   ];
 
