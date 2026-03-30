@@ -4,140 +4,85 @@ const axios = require('axios');
 const http = require('http');
 require('dotenv').config();
 
-// --- 1. SETUP SLACK ---
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true
 });
 
-// --- 2. GEMINI SETUP ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Função de Geração com Múltiplos Fallbacks (Resiliência Sênior)
+// --- FUNÇÃO DE GERAÇÃO COM BUSCA EXAUSTIVA ---
 async function generateWithFallback(prompt) {
-  // Lista de modelos para tentar em sequência
-  const modelsToTry = [
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
-    "gemini-pro"
+  // Matriz de teste: Modelos vs Versões de API
+  const configsToTry = [
+    { model: "gemini-1.5-pro", api: "v1beta" },
+    { model: "gemini-1.5-flash", api: "v1beta" },
+    { model: "gemini-1.5-pro", api: "v1" },
+    { model: "gemini-1.5-flash", api: "v1" },
+    { model: "gemini-pro", api: "v1" },
+    { model: "gemini-pro", api: "v1beta" }
   ];
 
-  for (const modelName of modelsToTry) {
+  for (const config of configsToTry) {
     try {
-      console.log(`🤖 Tentando resposta com: ${modelName} (v1beta)...`);
+      console.log(`🔍 Testando: ${config.model} na porta ${config.api}...`);
       
-      // ALTERAÇÃO CRUCIAL: v1beta para resolver o erro 404 da sua chave
       const currentModel = genAI.getGenerativeModel(
-        { model: modelName }, 
-        { apiVersion: 'v1beta' }
+        { model: config.model }, 
+        { apiVersion: config.api }
       );
       
       const result = await currentModel.generateContent(prompt);
       const response = await result.response;
-      return response.text(); 
+      const text = response.text();
+      
+      console.log(`✅ SUCESSO! Usando ${config.model} (${config.api})`);
+      return text;
 
     } catch (error) {
-      console.error(`⚠️ Falha no modelo ${modelName}:`, error.message);
-      // Se for o último da lista e falhar, joga o erro para o catch principal
-      if (modelName === "gemini-pro") throw error; 
-      console.log("🔄 Tentando próximo modelo da lista...");
+      console.error(`❌ Falhou: ${config.model}/${config.api} -> ${error.message}`);
+      // Se for a última tentativa da lista e falhar, explode o erro
+      if (config === configsToTry[configsToTry.length - 1]) throw error;
+      console.log("🔄 Tentando próxima combinação...");
     }
   }
 }
 
-// --- 3. CONFLUENCE SETUP ---
-const confluenceBaseUrl = "https://tiendanube.atlassian.net/wiki/api/v2";
-const auth = {
-  username: process.env.ATLASSIAN_EMAIL,
-  password: process.env.ATLASSIAN_TOKEN
-};
-
-// --- 4. FUNÇÃO RAG (Busca de Conhecimento) ---
+// --- CONFLUENCE RAG ---
 async function getConfluenceKnowledge() {
   const rootIds = ['443941204', '443941286'];
   let contextBuffer = "";
-
   try {
     for (const id of rootIds) {
-      const response = await axios.get(
-        `${confluenceBaseUrl}/pages/${id}?body-format=storage`,
-        { auth }
-      );
-
-      contextBuffer += `\n--- DOCUMENTO: ${response.data.title} ---\n`;
-      contextBuffer += response.data.body.storage.value + "\n";
-
-      const children = await axios.get(
-        `${confluenceBaseUrl}/pages/${id}/children`,
-        { auth }
-      );
-
-      const subTitles = children.data.results.map(c => c.title).join(", ");
-      contextBuffer += `Tópicos: ${subTitles}\n`;
+      const response = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}?body-format=storage`, {
+        auth: { username: process.env.ATLASSIAN_EMAIL, password: process.env.ATLASSIAN_TOKEN }
+      });
+      contextBuffer += `\n--- DOC: ${response.data.title} ---\n${response.data.body.storage.value}\n`;
     }
     return contextBuffer;
-
-  } catch (error) {
-    console.error("Erro no Confluence:", error.message);
-    return "Base de conhecimento indisponível no momento. Use seu conhecimento geral para ajudar.";
-  }
+  } catch (e) { return "Conhecimento base indisponível."; }
 }
 
-// --- 5. EVENTO DO SLACK ---
+// --- EVENTO SLACK ---
 app.event('app_mention', async ({ event, say }) => {
   try {
-    await say({
-      text: "Processando sua dúvida com a base sênior... 🧠",
-      thread_ts: event.ts
-    });
-
-    const knowledgeBase = await getConfluenceKnowledge();
-
-    const prompt = `
-      Você é o Gêmeo Digital do Willian Lemos, Mentor Sênior de Integrações na Nuvemshop/Tiendanube.
-      Responda de forma técnica, autoritária e prestativa para analistas N2.
-
-      CONTEXTO DA BASE DE CONHECIMENTO:
-      ${knowledgeBase}
-
-      PERGUNTA DO USUÁRIO:
-      ${event.text}
-    `;
-
-    const aiMessage = await generateWithFallback(prompt);
-
-    await say({
-      text: `*Willian Digital:*\n${aiMessage}`,
-      thread_ts: event.ts
-    });
-
-  } catch (error) {
-    console.error("Erro final no processamento:", error);
-    await say({
-      text: "❌ Erro crítico de comunicação com o cérebro AI (v1beta). Verifique os logs.",
-      thread_ts: event.ts
-    });
+    await say({ text: "Consultando todos os meus modelos cerebrais... 🧠", thread_ts: event.ts });
+    const kb = await getConfluenceKnowledge();
+    const fullPrompt = `Você é o Gêmeo Digital do Willian Lemos. Contexto: ${kb}. Pergunta: ${event.text}`;
+    
+    const aiMessage = await generateWithFallback(fullPrompt);
+    await say({ text: `*Willian Digital:*\n${aiMessage}`, thread_ts: event.ts });
+  } catch (err) {
+    await say({ text: "❌ Erro: Nenhum modelo Gemini respondeu nesta conta.", thread_ts: event.ts });
   }
 });
 
-// --- 6. SERVER (RENDER HEALTH CHECK) ---
-const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Agente Sênior Willian Online ✅');
-});
+// --- SERVER & START ---
+const server = http.createServer((req, res) => { res.writeHead(200); res.end('Online ✅'); });
+server.listen(process.env.PORT || 10000);
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`📡 Health-check rodando na porta ${PORT}`);
-});
-
-// --- 7. START DA APP ---
 (async () => {
-  try {
-    await app.start();
-    console.log('⚡️ Gêmeo Digital inicializado e conectado ao Slack!');
-  } catch (e) {
-    console.error("Falha ao iniciar o app:", e);
-  }
+  await app.start();
+  console.log('⚡️ Agente Sênior em modo de Varredura Total inicializado!');
 })();
