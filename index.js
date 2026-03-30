@@ -89,6 +89,7 @@ REGRAS DE RESPOSTA (OBRIGATÓRIAS - NÃO IGNORE):
       5. Se a solução envolver "forçar" ou "reinstalar", foque EXCLUSIVAMENTE nos links que contenham "/authorize".
       6. FOCO RESTRITO: Limite a resposta estritamente ao que foi perguntado. Se o analista pediu uma URL, entregue a URL e pare de escrever. 
       7. PROIBIÇÃO: Não traga procedimentos complementares.
+      8. Use o titulo e conteudo da documentação para encontrar o que mais faz sentido para a pergunta e use-o como resposta.
       PERGUNTA DO ANALISTA:
       ${event.text}
 
