@@ -15,7 +15,6 @@ const app = new App({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function generateWithFallback(prompt) {
-  // Lista prioritária baseada no seu acesso ao Gemini 3 Flash Preview
   const configsToTry = [
     { model: "gemini-3-flash-preview", api: "v1beta" },
     { model: "gemini-3-pro-preview", api: "v1beta" },
@@ -43,48 +42,52 @@ async function generateWithFallback(prompt) {
   }
 }
 
-// --- 3. CONFLUENCE RAG (BUSCA TÉCNICA) ---
+// --- 3. CONFLUENCE RAG (BUSCA PROFUNDA) ---
 async function getConfluenceKnowledge() {
   const rootIds = ['443941204', '443941286'];
   let contextBuffer = "";
+  const auth = { username: process.env.ATLASSIAN_EMAIL, password: process.env.ATLASSIAN_TOKEN };
+
   try {
     for (const id of rootIds) {
-      const response = await axios.get(
-        `https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}?body-format=storage`, 
-        { auth: { username: process.env.ATLASSIAN_EMAIL, password: process.env.ATLASSIAN_TOKEN } }
-      );
-      contextBuffer += `\n--- DOC: ${response.data.title} ---\n${response.data.body.storage.value}\n`;
+      // 1. Busca conteúdo da página Raiz
+      const rootRes = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}?body-format=storage`, { auth });
+      contextBuffer += `\n--- DOC PAI: ${rootRes.data.title} ---\n${rootRes.data.body.storage.value}\n`;
+
+      // 2. Busca páginas filhas (onde geralmente ficam as queries específicas)
+      const childrenRes = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}/children`, { auth });
+      
+      for (const child of childrenRes.data.results) {
+        const childContent = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${child.id}?body-format=storage`, { auth });
+        contextBuffer += `\n--- SUB-DOC: ${childContent.data.title} ---\n${childContent.data.body.storage.value}\n`;
+      }
     }
     return contextBuffer;
   } catch (e) { 
     console.error("Erro Confluence:", e.message);
-    return "Nota: Base de conhecimento do Confluence temporariamente indisponível."; 
+    return "Nota: Base de conhecimento limitada. Tente ser específico no termo de busca."; 
   }
 }
 
-// --- 4. EVENTO SLACK COM PROMPT OBJETIVO N2 ---
+// --- 4. EVENTO SLACK COM EXTRAÇÃO TÉCNICA ---
 app.event('app_mention', async ({ event, say }) => {
   try {
-    await say({ text: "Analisando sua dúvida técnica... 🧠", thread_ts: event.ts });
+    await say({ text: "Consultando guias e extraindo queries... 🧠", thread_ts: event.ts });
     
     const kb = await getConfluenceKnowledge();
     
-    // PROMPT ESTRUTURADO PARA ANALISTAS N2
     const fullPrompt = `
       PERSONA: Agente Digital Senior de N2 (Mentor Sênior de Integrações e Tech Support).
-      PÚBLICO: Suporte N2 Nuvemshop/Tiendanube.
       CONTEXTO TÉCNICO (CONFLUENCE):
       ${kb}
 
-      REGRAS DE RESPOSTA:
+      REGRAS DE RESPOSTA (OBRIGATÓRIAS):
       1. Seja DIRETO, técnico e use tom de autoridade sênior.
-      2. Para resposta use exclusivamente as documentações.
-      3. Como o publico é o Tech Support priorizar para respostas a pasta 443941286.
-      3. Listas numeradas para procedimentos de troubleshooting.
-      4. Evite saudações longas. Vá direto à solução.
-      5. Deixar o resposta limitada ao questionamento.
-      
-      
+      2. Se houver código, queries SQL ou comandos técnicos no contexto, EXIBA-OS INTEGRALMENTE. Não peça para o usuário procurar.
+      3. Use blocos de código Markdown (ex: \`\`\`sql ... \`\`\`).
+      4. Priorize informações da pasta 443941286 (Tech Support N2).
+      5. Se a query contiver parâmetros como 'ID' ou 'DATA', destaque para o analista que ele precisa ajustar esses valores.
+      6. Proibido saudações amigáveis. Comece direto com a solução ou a query encontrada.
 
       PERGUNTA DO ANALISTA:
       ${event.text}
@@ -93,11 +96,11 @@ app.event('app_mention', async ({ event, say }) => {
     `;
     
     const aiMessage = await generateWithFallback(fullPrompt);
-    await say({ text: `*Willian Digital:*\n${aiMessage}`, thread_ts: event.ts });
+    await say({ text: `*Willian Digital:* \n${aiMessage}`, thread_ts: event.ts });
 
   } catch (err) {
     console.error("Erro Crítico:", err);
-    await say({ text: "❌ Erro: Todos os modelos falharam. Verifique as cotas da API.", thread_ts: event.ts });
+    await say({ text: "❌ Falha na comunicação com os modelos Gemini. Verifique os logs.", thread_ts: event.ts });
   }
 });
 
@@ -115,7 +118,7 @@ server.listen(PORT, () => {
 (async () => {
   try {
     await app.start();
-    console.log('⚡️ Agente inicializado com Prompt N2!');
+    console.log('⚡️ Agente inicializado com Busca Profunda!');
   } catch (e) {
     console.error("Falha no Start:", e);
   }
