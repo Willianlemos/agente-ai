@@ -78,11 +78,12 @@ app.event('app_mention', async ({ event, say }) => {
 
       REGRAS DE RESPOSTA:
       1. Seja DIRETO, técnico e use tom de autoridade sênior.
-      2. Priorize a documentação acima. Se não encontrar, use conhecimento geral citando a fonte se fizer sentido com algo encontrado na documentação Confluence.
-      3. Use Markdown para endpoints (\`GET /exemplo\`) e códigos.
-      4. Listas numeradas para procedimentos de troubleshooting.
-      5. Evite saudações longas. Vá direto à solução.
-      6. Deixar o resposta limitada ao questionamento quando perguntas de processos.
+      2. Para resposta use exclusivamente as documentações.
+      3. Como o publico é o Tech Support priorizar para respostas a pasta 443941286.
+      3. Listas numeradas para procedimentos de troubleshooting.
+      4. Evite saudações longas. Vá direto à solução.
+      5. Deixar o resposta limitada ao questionamento.
+      
       
 
       PERGUNTA DO ANALISTA:
