@@ -16,6 +16,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Função de Geração com Múltiplos Fallbacks (Resiliência Sênior)
 async function generateWithFallback(prompt) {
+  // Lista de modelos para tentar em sequência
   const modelsToTry = [
     "gemini-1.5-pro",
     "gemini-1.5-flash",
@@ -24,10 +25,13 @@ async function generateWithFallback(prompt) {
 
   for (const modelName of modelsToTry) {
     try {
-      console.log(`🤖 Tentando resposta com: ${modelName}...`);
+      console.log(`🤖 Tentando resposta com: ${modelName} (v1beta)...`);
       
-      // Especificamos a apiVersion v1 para garantir estabilidade máxima
-      const currentModel = genAI.getGenerativeModel({ model: modelName }, { apiVersion: 'v1' });
+      // ALTERAÇÃO CRUCIAL: v1beta para resolver o erro 404 da sua chave
+      const currentModel = genAI.getGenerativeModel(
+        { model: modelName }, 
+        { apiVersion: 'v1beta' }
+      );
       
       const result = await currentModel.generateContent(prompt);
       const response = await result.response;
@@ -35,7 +39,7 @@ async function generateWithFallback(prompt) {
 
     } catch (error) {
       console.error(`⚠️ Falha no modelo ${modelName}:`, error.message);
-      // Se for o último da lista (gemini-pro) e falhar, joga o erro para o catch principal
+      // Se for o último da lista e falhar, joga o erro para o catch principal
       if (modelName === "gemini-pro") throw error; 
       console.log("🔄 Tentando próximo modelo da lista...");
     }
@@ -76,7 +80,7 @@ async function getConfluenceKnowledge() {
 
   } catch (error) {
     console.error("Erro no Confluence:", error.message);
-    return "Base de conhecimento indisponível no momento.";
+    return "Base de conhecimento indisponível no momento. Use seu conhecimento geral para ajudar.";
   }
 }
 
@@ -92,10 +96,12 @@ app.event('app_mention', async ({ event, say }) => {
 
     const prompt = `
       Você é o Gêmeo Digital do Willian Lemos, Mentor Sênior de Integrações na Nuvemshop/Tiendanube.
-      CONTEXTO TÉCNICO:
+      Responda de forma técnica, autoritária e prestativa para analistas N2.
+
+      CONTEXTO DA BASE DE CONHECIMENTO:
       ${knowledgeBase}
 
-      PERGUNTA DO ANALISTA:
+      PERGUNTA DO USUÁRIO:
       ${event.text}
     `;
 
@@ -109,7 +115,7 @@ app.event('app_mention', async ({ event, say }) => {
   } catch (error) {
     console.error("Erro final no processamento:", error);
     await say({
-      text: "❌ Tive um erro crítico em todos os meus modelos cerebrais. Verifique os logs no Render.",
+      text: "❌ Erro crítico de comunicação com o cérebro AI (v1beta). Verifique os logs.",
       thread_ts: event.ts
     });
   }
