@@ -82,6 +82,7 @@ app.event('app_mention', async ({ event, say }) => {
       3. Use Markdown para endpoints (\`GET /exemplo\`) e códigos.
       4. Listas numeradas para procedimentos de troubleshooting.
       5. Evite saudações longas. Vá direto à solução.
+      6. Deixar o resposta limitada ao questionamento quando perguntas de processos.
       
 
       PERGUNTA DO ANALISTA:
