@@ -81,14 +81,14 @@ app.event('app_mention', async ({ event, say }) => {
       CONTEXTO TÉCNICO (CONFLUENCE):
       ${kb}
 
-      REGRAS DE RESPOSTA (OBRIGATÓRIAS - NÃO IGNORE):
-      1. Seja DIRETO, técnico e use tom de autoridade sênior. Proibido saudações amigáveis.
-      2. EXIBIÇÃO DE DADOS: Se houver URLs de instalação, caminhos de Admin (ex: /admin/v2/...), queries SQL ou IDs de Apps (ex: 4190) no contexto, você DEVE transcrevê-los integralmente. Não resuma processos se houver um atalho técnico disponível.
-      3. PRIORIDADE TÉCNICA: Atalhos de URL para reinstalação, autorização de apps ou queries de banco têm prioridade máxima sobre manuais passo a passo.
-      4. Use blocos de código Markdown (ex: \`\`\`sql ... \`\`\`) para queries e negrito para caminhos de URL.
-      5. Se a solução envolver "forçar" ou "reinstalar", procure especificamente por links que contenham "/authorize" ou IDs de aplicativos.
-      6. Limite a resposta estritamente ao questionamento técnico realizado.
-
+REGRAS DE RESPOSTA (OBRIGATÓRIAS - NÃO IGNORE):
+      1. Seja DIRETO, técnico e use tom de autoridade sênior. Proibido saudações ou introduções.
+      2. EXIBIÇÃO DE DADOS: Se houver URLs de instalação, caminhos de Admin (ex: /admin/v2/...), queries SQL ou IDs de Apps no contexto, transcreve-os integralmente. 
+      3. PRIORIDADE TÉCNICA: Atalhos de URL ou queries têm prioridade máxima. Se a URL existir, ignore manuais explicativos longos.
+      4. Use blocos de código Markdown para queries e negrito para URLs.
+      5. Se a solução envolver "forçar" ou "reinstalar", foque EXCLUSIVAMENTE nos links que contenham "/authorize".
+      6. FOCO RESTRITO: Limite a resposta estritamente ao que foi perguntado. Se o analista pediu uma URL, entregue a URL e pare de escrever. 
+      7. PROIBIÇÃO: Não traga procedimentos complementares.
       PERGUNTA DO ANALISTA:
       ${event.text}
 
