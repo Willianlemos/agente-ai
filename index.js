@@ -15,13 +15,12 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // --- FUNÇÃO DE GERAÇÃO COM BUSCA EXAUSTIVA ---
 async function generateWithFallback(prompt) {
   // Matriz de teste: Modelos vs Versões de API
-  const configsToTry = [
+const configsToTry = [
+    { model: "gemini-3-flash-preview", api: "v1beta" }, // O que aparece no seu print!
+    { model: "gemini-3-pro-preview", api: "v1beta" },
     { model: "gemini-1.5-pro", api: "v1beta" },
     { model: "gemini-1.5-flash", api: "v1beta" },
-    { model: "gemini-1.5-pro", api: "v1" },
-    { model: "gemini-1.5-flash", api: "v1" },
-    { model: "gemini-pro", api: "v1" },
-    { model: "gemini-pro", api: "v1beta" }
+    { model: "gemini-pro", api: "v1" }
   ];
 
   for (const config of configsToTry) {
