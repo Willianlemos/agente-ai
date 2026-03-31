@@ -72,7 +72,7 @@ async function getConfluenceKnowledge() {
 // --- 4. EVENTO SLACK COM EXTRAÇÃO TÉCNICA ---
 app.event('app_mention', async ({ event, say }) => {
   try {
-    await say({ text: "Consultando guias e extraindo queries... 🧠", thread_ts: event.ts });
+    await say({ text: "Deixe me ver se eu consigo te ajudar, só um instante.. 🧠", thread_ts: event.ts });
     
     const kb = await getConfluenceKnowledge();
     
@@ -107,7 +107,7 @@ Você é uma ferramenta técnica de precisão para analistas tecnicos. Sua únic
     `;
     
     const aiMessage = await generateWithFallback(fullPrompt);
-    await say({ text: `*Willian Digital:* \n${aiMessage}`, thread_ts: event.ts });
+    await say({ text: `*Agente:* \n${aiMessage}`, thread_ts: event.ts });
 
   } catch (err) {
     console.error("Erro Crítico:", err);
