@@ -11,74 +11,103 @@ const app = new App({
   socketMode: true
 });
 
-// --- 2. GEMINI SETUP (SCANNER UNIVERSAL) ---
+// --- 2. GEMINI SETUP ---
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function generateWithFallback(prompt) {
-const configsToTry = [
-    { model: "gemini-3-flash-preview", api: "v1beta" }, // Flash primeiro (mais cota)
-    { model: "gemini-1.5-flash", api: "v1beta" },
-    { model: "gemini-3-pro-preview", api: "v1beta" },   // Pro depois
-    { model: "gemini-1.5-pro", api: "v1beta" },
-    { model: "gemini-pro", api: "v1" }
+  const models = [
+    "gemini-1.5-flash",
+    "gemini-1.5-pro"
   ];
 
-  for (const config of configsToTry) {
+  for (let i = 0; i < models.length; i++) {
+    const modelName = models[i];
+
     try {
-      console.log(`🔍 Tentando: ${config.model} (${config.api})...`);
-      const currentModel = genAI.getGenerativeModel(
-        { model: config.model }, 
-        { apiVersion: config.api }
-      );
-      
-      const result = await currentModel.generateContent(prompt);
-      const response = await result.response;
+      console.log(`🔍 Tentando modelo: ${modelName}`);
+
+      const model = genAI.getGenerativeModel({
+        model: modelName
+      });
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+
       return response.text();
 
     } catch (error) {
-      console.error(`❌ Falhou ${config.model}: ${error.message}`);
-      if (config === configsToTry[configsToTry.length - 1]) throw error;
+      console.error(`❌ Falhou ${modelName}: ${error.message}`);
+      if (i === models.length - 1) throw error;
     }
   }
 }
 
-// --- 3. CONFLUENCE RAG (BUSCA PROFUNDA) ---
+// --- 3. CONFLUENCE RAG ---
 async function getConfluenceKnowledge() {
   const rootIds = ['443941204', '443941286'];
   let contextBuffer = "";
-  const auth = { username: process.env.ATLASSIAN_EMAIL, password: process.env.ATLASSIAN_TOKEN };
+
+  const auth = {
+    username: process.env.ATLASSIAN_EMAIL,
+    password: process.env.ATLASSIAN_TOKEN
+  };
 
   try {
     for (const id of rootIds) {
-      // 1. Busca conteúdo da página Raiz
-      const rootRes = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}?body-format=storage`, { auth });
+
+      // Página raiz
+      const rootRes = await axios.get(
+        `https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}?body-format=storage`,
+        { auth, timeout: 5000 }
+      );
+
       contextBuffer += `\n--- DOC PAI: ${rootRes.data.title} ---\n${rootRes.data.body.storage.value}\n`;
 
-      // 2. Busca páginas filhas (onde geralmente ficam as queries específicas)
-      const childrenRes = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}/children`, { auth });
-      
+      // Filhas
+      const childrenRes = await axios.get(
+        `https://tiendanube.atlassian.net/wiki/api/v2/pages/${id}/children`,
+        { auth, timeout: 5000 }
+      );
+
       for (const child of childrenRes.data.results) {
-        const childContent = await axios.get(`https://tiendanube.atlassian.net/wiki/api/v2/pages/${child.id}?body-format=storage`, { auth });
+
+        const childContent = await axios.get(
+          `https://tiendanube.atlassian.net/wiki/api/v2/pages/${child.id}?body-format=storage`,
+          { auth, timeout: 5000 }
+        );
+
         contextBuffer += `\n--- SUB-DOC: ${childContent.data.title} ---\n${childContent.data.body.storage.value}\n`;
+
+        // 🔥 Limite de tamanho (evita estouro de token)
+        if (contextBuffer.length > 15000) {
+          return contextBuffer;
+        }
       }
     }
+
     return contextBuffer;
-  } catch (e) { 
+
+  } catch (e) {
     console.error("Erro Confluence:", e.message);
-    return "Nota: Base de conhecimento limitada. Tente ser específico no termo de busca."; 
+    return "Nota: Base de conhecimento limitada.";
   }
 }
 
-// --- 4. EVENTO SLACK COM EXTRAÇÃO TÉCNICA ---
+// --- 4. EVENTO SLACK ---
 app.event('app_mention', async ({ event, say }) => {
   try {
-    await say({ text: "Deixe me ver se eu consigo te ajudar, só um instante.. 🧠", thread_ts: event.ts });
-    
+    const thread = event.thread_ts || event.ts;
+
+    await say({
+      text: "Deixe me ver se eu consigo te ajudar... 🧠",
+      thread_ts: thread
+    });
+
     const kb = await getConfluenceKnowledge();
-    
+
     const fullPrompt = `
-      PERSONA: Agente Digital Senior de N2 (Mentor Sênior de Integrações e Tech Support).
 PERSONA: Agente Digital Senior de N2 (Mentor Sênior de Integrações e Tech Support).
+
 CONTEXTO TÉCNICO (CONFLUENCE):
 ${kb}
 
@@ -86,45 +115,54 @@ ${kb}
 
 Você é uma ferramenta de extração de dados técnicos. Sua função é converter perguntas de analistas em recursos acionáveis (URLs, Queries ou Comandos) baseando-se estritamente no contexto fornecido.
 
-# REGRAS DE RESPOSTA (OBRIGATÓRIAS - NÃO IGNORE):
+# REGRAS:
 
-1. **SILÊNCIO ABSOLUTO PARA SAUDAÇÕES:** Se a pergunta for apenas um cumprimento (ex: "olá", "está aí?", "bom dia"), responda apenas: "Pronto para extração. Informe a URL ou o erro." e nada mais. Proibido listar menus ou escopos de suporte.
-2. **SENIORIDADE E DIRETO AO PONTO:** Proibido saudações, introduções ou frases de cortesia (ex: "Aqui está", "Consultando guia..."). Se encontrar o recurso, entregue-o imediatamente.
-3. **EXIBIÇÃO DE DADOS:** Transcreva integralmente URLs de instalação, caminhos de Admin e queries SQL. Se houver uma URL de loja na pergunta, concatene-a imediatamente com o caminho técnico da documentação.
-4. **PRIORIDADE TÉCNICA:** Links técnicos e Queries têm precedência absoluta. Ignore manuais longos se houver um atalho de URL disponível.
-5. **REINSTALAÇÃO:** Para termos como "forçar" ou "reinstalar", entregue EXCLUSIVAMENTE o link com o endpoint "/authorize" e o ID do respectivo App.
-6. **PROIBIÇÃO DE COMPLEMENTOS:** Não traga procedimentos extras, avisos de segurança ou explicações de "como fazer". 
-7. **TRATAMENTO DE AUSÊNCIA:** Se a solução específica não estiver no contexto `${kb}`, responda apenas: "ERRO: Procedimento não localizado na base técnica." 
-8. **FORMATAÇÃO:** Use blocos de código Markdown para queries e **negrito** para URLs.
+1. Se for saudação → "Pronto para extração. Informe a URL ou o erro."
+2. Sem introdução ou explicação
+3. Prioridade: URLs e Queries
+4. Não inventar resposta
+5. Se não encontrar: "ERRO: Procedimento não localizado na base técnica."
+6. URLs em **negrito**
+7. Queries em bloco de código
 
-PERGUNTA DO ANALISTA:
+PERGUNTA:
 ${event.text}
-    `;
-    
+`;
+
     const aiMessage = await generateWithFallback(fullPrompt);
-    await say({ text: `*Agente:* \n${aiMessage}`, thread_ts: event.ts });
+
+    await say({
+      text: `*Agente:*\n${aiMessage}`,
+      thread_ts: thread
+    });
 
   } catch (err) {
     console.error("Erro Crítico:", err);
-    await say({ text: "❌ Falha na comunicação com os modelos Gemini. Verifique os logs.", thread_ts: event.ts });
+
+    await say({
+      text: "❌ Falha ao processar. Verifique os logs.",
+      thread_ts: event.thread_ts || event.ts
+    });
   }
 });
 
-// --- 5. SERVER & START ---
-const server = http.createServer((req, res) => { 
-  res.writeHead(200); 
-  res.end('Agente Sênior Online ✅'); 
+// --- 5. HEALTH CHECK SERVER ---
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Agente Sênior Online ✅');
 });
 
 const PORT = process.env.PORT || 10000;
+
 server.listen(PORT, () => {
   console.log(`📡 Health-check na porta ${PORT}`);
 });
 
+// --- 6. START ---
 (async () => {
   try {
     await app.start();
-    console.log('⚡️ Agente inicializado com Busca Profunda!');
+    console.log('⚡️ Agente inicializado com sucesso!');
   } catch (e) {
     console.error("Falha no Start:", e);
   }
