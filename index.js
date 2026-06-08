@@ -1,5 +1,5 @@
 const { App } = require('@slack/bolt');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const http = require('http');
 require('dotenv').config();
@@ -11,32 +11,27 @@ const app = new App({
   socketMode: true
 });
 
-// --- 2. GEMINI SETUP (SCANNER UNIVERSAL) ---
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// --- 2. ANTHROPIC SETUP ---
+const anthropic = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 async function generateWithFallback(prompt) {
-const configsToTry = [
-  { model: "gemini-2.0-flash", api: "v1beta" },
-  { model: "gemini-2.0-flash-lite", api: "v1beta" },
-  { model: "gemini-2.5-flash-preview-05-20", api: "v1beta" },
-  { model: "gemini-2.5-pro-preview-06-05", api: "v1beta" },
-];
+  const modelsToTry = [
+    "claude-sonnet-4-20250514",
+    "claude-haiku-4-5-20251001",
+  ];
 
-  for (const config of configsToTry) {
+  for (const model of modelsToTry) {
     try {
-      console.log(`🔍 Tentando: ${config.model} (${config.api})...`);
-      const currentModel = genAI.getGenerativeModel(
-        { model: config.model },
-        { apiVersion: config.api }
-      );
-
-      const result = await currentModel.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-
+      console.log(`🔍 Tentando: ${model}...`);
+      const message = await anthropic.messages.create({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }]
+      });
+      return message.content[0].text;
     } catch (error) {
-      console.error(`❌ Falhou ${config.model}: ${error.message}`);
-      if (config === configsToTry[configsToTry.length - 1]) throw error;
+      console.error(`❌ Falhou ${model}: ${error.message}`);
+      if (model === modelsToTry[modelsToTry.length - 1]) throw error;
     }
   }
 }
@@ -102,7 +97,7 @@ ${event.text}
 
   } catch (err) {
     console.error("Erro Crítico:", err);
-    await say({ text: "❌ Falha na comunicação com os modelos Gemini. Verifique os logs.", thread_ts: event.ts });
+    await say({ text: "❌ Falha na comunicação com a API. Verifique os logs.", thread_ts: event.ts });
   }
 });
 
@@ -120,7 +115,7 @@ server.listen(PORT, () => {
 (async () => {
   try {
     await app.start();
-    console.log('⚡️ Agente inicializado com Busca Profunda!');
+    console.log('⚡️ Agente inicializado com Anthropic!');
   } catch (e) {
     console.error("Falha no Start:", e);
   }
