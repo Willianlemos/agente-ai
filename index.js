@@ -1,4 +1,3 @@
-veja se encontra algum erro de sintaxe
 const { App } = require('@slack/bolt');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require('axios');
